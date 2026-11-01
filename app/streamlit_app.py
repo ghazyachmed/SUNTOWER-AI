@@ -1,778 +1,352 @@
 """
-SUNTOWER-AI — GeoAI Capital Allocation Engine for Sustainable Telecom Infrastructure
-Interactive Dashboard (Streamlit + Folium)
+SUNTOWER-AI — retrofit portfolio decision support (Streamlit).
 
-ASEAN GeoAI Fusion 2026 Hackathon — Team HACK-ID-068
+User path: set budget → inspect evidence → compare plans → examine exclusions → approve/export.
+The legacy 3,532-row screening map is kept as its own tab, relabelled as formula-based proxies.
+
+ASEAN GeoAI Fusion 2026 Hackathon — Team HACK-ID-068 (extended for SENO Hackathon ITS 2026)
 """
 
-import streamlit as st
-import pandas as pd
-import numpy as np
-import folium
-from folium.plugins import MarkerCluster
-from streamlit_folium import st_folium
-import plotly.express as px
-import plotly.graph_objects as go
-import json
 import os
 import sys
 
-# Add scripts to path
+import folium
+import pandas as pd
+import plotly.graph_objects as go
+import streamlit as st
+from streamlit_folium import st_folium
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
-from scoring_engine import (
-    compute_scores, budget_allocation, compute_impact,
-    scenario_compare, SCENARIO_WEIGHTS, DEFAULT_WEIGHTS
+from scoring_engine import (  # noqa: E402
+    compute_scores, budget_allocation, compute_impact, SCENARIO_WEIGHTS,
 )
+from retrofit_options import ASSUMPTIONS, assumptions_frame, with_overrides  # noqa: E402
+from portfolio_optimizer import OBJECTIVES  # noqa: E402
+from seno_workflow import SAMPLE_PATH, run_workflow  # noqa: E402
+from site_schema import EVIDENCE_LABEL, evidence_matrix, load_portfolio_csv  # noqa: E402
 
-# -------------------------------------------------------------------
-# Page Configuration
-# -------------------------------------------------------------------
-st.set_page_config(
-    page_title="SUNTOWER-AI | GeoAI Capital Allocation Engine",
-    page_icon="☀️",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
+st.set_page_config(page_title="SUNTOWER-AI · Retrofit portfolio", page_icon="☀️", layout="wide")
 
-# -------------------------------------------------------------------
-# Custom CSS
-# -------------------------------------------------------------------
+# Editorial styling: type hierarchy and rules, no gradients or glow.
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
-
-    * { font-family: 'Inter', sans-serif; }
-
-    .main .block-container {
-        padding-top: 1.5rem;
-        padding-bottom: 1rem;
-        max-width: 100%;
-    }
-
-    /* Header */
-    .hero-header {
-        background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 40%, #0c4a6e 100%);
-        border-radius: 16px;
-        padding: 1.8rem 2rem;
-        margin-bottom: 1.2rem;
-        border: 1px solid rgba(255, 191, 0, 0.15);
-        position: relative;
-        overflow: hidden;
-    }
-    .hero-header::before {
-        content: '';
-        position: absolute;
-        top: -50%;
-        right: -10%;
-        width: 300px;
-        height: 300px;
-        background: radial-gradient(circle, rgba(251, 191, 36, 0.12) 0%, transparent 70%);
-        pointer-events: none;
-    }
-    .hero-title {
-        font-size: 1.9rem;
-        font-weight: 900;
-        color: #f8fafc;
-        margin: 0 0 0.25rem 0;
-        letter-spacing: -0.03em;
-    }
-    .hero-title span {
-        background: linear-gradient(90deg, #fbbf24, #f59e0b);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-    }
-    .hero-sub {
-        font-size: 0.92rem;
-        color: #94a3b8;
-        margin: 0;
-        font-weight: 400;
-        line-height: 1.5;
-    }
-    .hero-tagline {
-        font-size: 0.78rem;
-        color: #fbbf24;
-        font-weight: 700;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-        margin-top: 0.5rem;
-    }
-
-    /* Metric Cards */
-    .metric-card {
-        background: linear-gradient(135deg, #1e293b, #0f172a);
-        border: 1px solid rgba(148, 163, 184, 0.12);
-        border-radius: 14px;
-        padding: 1.1rem 1.2rem;
-        text-align: center;
-    }
-    .metric-value {
-        font-size: 1.7rem;
-        font-weight: 900;
-        color: #f8fafc;
-        letter-spacing: -0.02em;
-        line-height: 1.1;
-    }
-    .metric-label {
-        font-size: 0.68rem;
-        color: #64748b;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-        font-weight: 700;
-        margin-top: 0.3rem;
-    }
-    .metric-highlight {
-        border-color: rgba(251, 191, 36, 0.3);
-        background: linear-gradient(135deg, #1e293b, #1a2332);
-    }
-    .metric-highlight .metric-value {
-        color: #fbbf24;
-    }
-
-    /* Tower Detail Card */
-    .tower-detail {
-        background: linear-gradient(135deg, #1e293b, #0f172a);
-        border: 1px solid rgba(148, 163, 184, 0.15);
-        border-radius: 16px;
-        padding: 1.5rem;
-    }
-    .tower-detail h3 {
-        color: #f8fafc;
-        font-weight: 800;
-        margin-bottom: 0.5rem;
-    }
-
-    /* Info badge */
-    .info-badge {
-        display: inline-block;
-        background: rgba(59, 130, 246, 0.12);
-        color: #60a5fa;
-        padding: 0.25rem 0.7rem;
-        border-radius: 999px;
-        font-size: 0.7rem;
-        font-weight: 700;
-        letter-spacing: 0.04em;
-    }
-    .info-badge.green {
-        background: rgba(34, 197, 94, 0.12);
-        color: #4ade80;
-    }
-    .info-badge.amber {
-        background: rgba(251, 191, 36, 0.12);
-        color: #fbbf24;
-    }
-    .info-badge.red {
-        background: rgba(239, 68, 68, 0.12);
-        color: #f87171;
-    }
-
-    /* Sidebar styling */
-    section[data-testid="stSidebar"] {
-        background: #0f172a;
-    }
-    section[data-testid="stSidebar"] .stMarkdown h1,
-    section[data-testid="stSidebar"] .stMarkdown h2,
-    section[data-testid="stSidebar"] .stMarkdown h3 {
-        color: #f8fafc;
-    }
-
-    /* Divider */
-    .section-divider {
-        border: none;
-        border-top: 1px solid rgba(148, 163, 184, 0.1);
-        margin: 1rem 0;
-    }
-
-    /* Hide Streamlit branding */
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
-
-    div[data-testid="stMetric"] {
-        background: linear-gradient(135deg, #1e293b, #0f172a);
-        border: 1px solid rgba(148, 163, 184, 0.12);
-        border-radius: 12px;
-        padding: 0.8rem 1rem;
-    }
+  .block-container {padding-top: 1.4rem; max-width: 1280px;}
+  h1 {font-weight: 700; letter-spacing: -0.01em; margin-bottom: 0;}
+  h2, h3 {font-weight: 650; border-bottom: 1px solid rgba(128,128,128,.35); padding-bottom: .2rem;}
+  .kicker {text-transform: uppercase; letter-spacing: .08em; font-size: .72rem; opacity: .7; margin: 0;}
+  .stat {font-variant-numeric: tabular-nums;}
+  .stat b {font-size: 1.35rem; display: block; line-height: 1.2;}
+  .stat span {font-size: .75rem; opacity: .75;}
 </style>
 """, unsafe_allow_html=True)
 
+DISCLAIMER = ("**Decision support, not proof of field savings.** Every saving, emission and reliability figure "
+              "on this page is a modeled estimate from the listed inputs and assumptions. The map and scenarios "
+              "do not show measured outcomes.")
+
+
+def stat(col, value, label):
+    col.markdown(f"<div class='stat'><b>{value}</b><span>{label}</span></div>", unsafe_allow_html=True)
+
+
+def money(v, cur):
+    return f"{cur} {v:,.0f}"
+
+
+@st.cache_data(show_spinner=False)
+def cached_workflow(records, budget, objective, max_diesel_hours, scope, capex_basis, overrides,
+                    data_label, approved_by):
+    return run_workflow(records, budget, objective, max_diesel_hours, scope, capex_basis,
+                        with_overrides(**dict(overrides)), data_label, approved_by=approved_by)
+
 
 # -------------------------------------------------------------------
-# Data Loading
+# 1 · Budget and constraints (sidebar)
+# -------------------------------------------------------------------
+def render_sidebar():
+    with st.sidebar:
+        st.markdown("### 1 · Budget and constraints")
+        source = st.radio("Portfolio data", ["Fictional sample (11 towers)", "Upload long-format CSV"])
+        records, label = None, None
+        if source.startswith("Fictional"):
+            records, label = load_portfolio_csv(SAMPLE_PATH), "sample_portfolio_fictional.csv (FICTIONAL)"
+        else:
+            up = st.file_uploader("CSV: site_id, field, value, unit, source, as_of_date, evidence_type, "
+                                  "uncertainty_pct, notes", type="csv")
+            if up is not None:
+                records, label = load_portfolio_csv(up), up.name
+        budget = st.number_input("CAPEX budget", min_value=0, value=60_000, step=5_000,
+                                 help="Total retrofit CAPEX across the portfolio, in the portfolio currency")
+        objective = st.radio("Objective (one quantity, no blended score)", list(OBJECTIVES),
+                             format_func=lambda k: f"Maximise {OBJECTIVES[k][1]}")
+        use_rel = st.checkbox("Reliability constraint", value=True,
+                              help="Cap estimated residual generator hours per day at each site")
+        max_h, scope = None, "fixable"
+        if use_rel:
+            max_h = float(st.slider("Max residual diesel hours/day", 0, 24, 8))
+            scope = st.radio("Applies to", ["fixable", "all"],
+                             format_func=lambda s: {"fixable": "Sites where an option can meet it",
+                                                    "all": "Every site (hard)"}[s])
+        capex_basis = st.radio("CAPEX basis for the budget", ["point", "high"],
+                               format_func=lambda s: {"point": "Point estimate",
+                                                      "high": "High case (cost overrun)"}[s])
+        with st.expander("Analysis assumptions"):
+            dr = st.number_input("Discount rate", 0.0, 0.5, ASSUMPTIONS["discount_rate"].value, 0.01)
+            hz = st.number_input("Horizon (years)", 1, 30, int(ASSUMPTIONS["horizon_years"].value))
+            pr = st.number_input("PV performance ratio", 0.5, 0.95, ASSUMPTIONS["pv_performance_ratio"].value, 0.01)
+            au = st.number_input("Battery autonomy (h)", 1.0, 24.0, ASSUMPTIONS["battery_autonomy_h"].value, 0.5)
+        overrides = (("discount_rate", dr), ("horizon_years", hz), ("pv_performance_ratio", pr),
+                     ("battery_autonomy_h", au))
+        st.caption("ASEAN GeoAI Fusion 2026 · HACK-ID-068")
+    return records, label, float(budget), objective, max_h, scope, capex_basis, overrides
+
+
+# -------------------------------------------------------------------
+# 2 · Evidence
+# -------------------------------------------------------------------
+def render_evidence(res):
+    st.markdown("Every input carries an evidence label. Labels are text, so they survive printing and "
+                "do not depend on colour.")
+    counts = res["evidence_counts"]
+    cols = st.columns(len(EVIDENCE_LABEL))
+    for col, (k, lab) in zip(cols, EVIDENCE_LABEL.items()):
+        stat(col, counts.get(k, 0), lab)
+    issues = res["issues"]
+    st.markdown("#### Validation")
+    if issues.empty:
+        st.write("No validation issues.")
+    else:
+        st.dataframe(issues, hide_index=True, width="stretch")
+    st.markdown("#### Evidence matrix (valid sites)")
+    st.dataframe(evidence_matrix(res["sites"]), hide_index=True, width="stretch")
+    st.markdown("#### Field detail")
+    sid = st.selectbox("Site", [s.site_id for s in res["sites"]], key="ev_site")
+    site = next(s for s in res["sites"] if s.site_id == sid)
+    rows = [{"field": f, "value": fv.value, "unit": fv.unit, "evidence": EVIDENCE_LABEL[fv.evidence_type],
+             "uncertainty ±%": fv.uncertainty_pct, "as of": fv.as_of_date, "source": fv.source, "notes": fv.notes}
+            for f, fv in site.fields.items()]
+    st.dataframe(pd.DataFrame(rows).astype({"value": str}), hide_index=True, width="stretch")
+
+
+# -------------------------------------------------------------------
+# 3 · Compare plans
+# -------------------------------------------------------------------
+def render_compare(res, budget, objective):
+    cur = res["currency"]
+    opt = res["optimal"]
+    status_line = f"Optimizer status: **{opt.status}** · {opt.solver} · MIP gap {opt.mip_gap} · {opt.message}"
+    (st.success if opt.status == "OPTIMAL" else st.error)(status_line)
+    st.markdown("**Constraints:** " + "; ".join(res["constraints"]))
+    if res["reliability_exceptions"]:
+        st.warning("Reliability exceptions (no eligible option can meet the target): "
+                   + ", ".join(res["reliability_exceptions"]))
+    comp = res["comparison"].copy()
+    show = comp[["plan", "status", "sites_retrofitted", "capex", "capex_high", "npv", "npv_low", "npv_high",
+                 "co2_avoided_t_yr", "diesel_l_avoided_yr", "max_residual_diesel_h_day", "weakest_evidence",
+                 "violations", "active_constraints"]]
+    st.dataframe(show, hide_index=True, width="stretch", column_config={
+        c: st.column_config.NumberColumn(format="%.0f") for c in
+        ["capex", "capex_high", "npv", "npv_low", "npv_high", "diesel_l_avoided_yr"]})
+    st.caption(f"All four plans use identical inputs, options and budget ({money(budget, cur)}). "
+               "do_nothing and the two greedy rules are baselines; only the MILP is checked for optimality.")
+
+    left, right = st.columns(2)
+    with left:
+        fig = go.Figure(go.Bar(
+            y=comp["plan"], x=comp["npv"], orientation="h", marker_color="#4a6fa5",
+            error_x=dict(type="data", symmetric=False, array=comp["npv_high"] - comp["npv"],
+                         arrayminus=comp["npv"] - comp["npv_low"]),
+            text=[f"{v:,.0f}" for v in comp["npv"]], textposition="outside"))
+        fig.update_layout(title=f"Modeled NPV with input-uncertainty range ({cur})", height=300,
+                          margin=dict(t=40, b=20, l=10, r=40), yaxis=dict(autorange="reversed"))
+        st.plotly_chart(fig, width="stretch")
+    with right:
+        par = res.get("pareto")
+        if par is not None and len(par) == 1:
+            st.markdown("**NPV vs CO2 trade-off:** only one non-dominated plan exists under the current "
+                        "constraints, so there is no trade-off to show.")
+        elif par is not None and len(par):
+            fig2 = go.Figure(go.Scatter(x=par["co2_avoided_t_yr"], y=par["npv"], mode="lines+markers+text",
+                                        text=[f"{c:,.0f}" for c in par["capex"]], textposition="top center",
+                                        line=dict(color="#555")))
+            fig2.update_layout(title="NPV vs CO2 trade-off (labels: CAPEX)", xaxis_title="tCO2/yr avoided",
+                               yaxis_title=f"NPV ({cur})", height=300, margin=dict(t=40, b=40, l=10, r=10))
+            st.plotly_chart(fig2, width="stretch")
+            st.caption("Epsilon-constraint sweep: max NPV subject to CO2 ≥ ε. Dollars and tonnes are never summed.")
+
+    st.markdown("#### Option chosen per site, by plan")
+    mat = pd.DataFrame({name: p.selection.set_index("site_id")["option"] for name, p in res["plans"].items()})
+    st.dataframe(mat, width="stretch")
+
+
+# -------------------------------------------------------------------
+# 4 · Sites and exclusions
+# -------------------------------------------------------------------
+def render_sites(res, objective):
+    sel = res["optimal"].selection
+    t = sel[["site_id", "option", "pv_kwp", "battery_kwh", "capex_low", "capex", "capex_high", "npv_low", "npv",
+             "npv_high", "co2_avoided_t_yr", "baseline_diesel_h_day", "residual_diesel_h_day",
+             "evidence_status"]].copy()
+    t["evidence"] = t.pop("evidence_status").map(EVIDENCE_LABEL)
+    st.markdown("#### Recommended plan, site by site")
+    st.dataframe(t, hide_index=True, width="stretch", column_config={
+        c: st.column_config.NumberColumn(format="%.0f") for c in
+        ["capex_low", "capex", "capex_high", "npv_low", "npv", "npv_high"]})
+
+    st.markdown("#### Why this option?")
+    sid = st.selectbox("Site", list(sel["site_id"]), key="rat_site")
+    opts = res["options"][res["options"]["site_id"] == sid].copy()
+    picked = sel.set_index("site_id").loc[sid, "option"]
+    obj_col = OBJECTIVES[objective][0]
+    st.write(f"**{sid}** → **{picked}**. The optimizer picks the combination of one option per site that "
+             f"maximises total {OBJECTIVES[objective][1]} within the budget and constraints, so a site can get a "
+             "cheaper option than its individual best when funds are better used elsewhere.")
+    opts["evidence"] = opts["evidence_status"].map(EVIDENCE_LABEL)
+    st.dataframe(opts[["option", "eligible", "exclusion_reason", "capex", obj_col, "annual_savings",
+                       "residual_diesel_h_day", "evidence", "formula"]], hide_index=True, width="stretch")
+
+    st.markdown("#### Exclusions")
+    inv = res["invalid_sites"]
+    if len(inv):
+        st.markdown("Sites rejected by validation (not optimized):")
+        st.dataframe(inv, hide_index=True, width="stretch")
+    st.markdown("Options not available at a site:")
+    st.dataframe(res["exclusions"], hide_index=True, width="stretch")
+
+
+# -------------------------------------------------------------------
+# 5 · Approve and export
+# -------------------------------------------------------------------
+def render_export(res):
+    st.markdown("Review the memo, confirm you checked evidence labels and exclusions, then export.")
+    st.markdown(res["memo_md"])
+    ok = st.checkbox("I reviewed the evidence labels, exclusions and cost ranges")
+    c1, c2, c3, c4 = st.columns(4)
+    c1.download_button("Memo (printable HTML)", res["memo_html"], "suntower_portfolio_memo.html", "text/html",
+                       disabled=not ok)
+    c2.download_button("Memo (Markdown)", res["memo_md"], "suntower_portfolio_memo.md", "text/markdown",
+                       disabled=not ok)
+    c3.download_button("Chosen plan (CSV)", res["plan_csv"].to_csv(index=False), "suntower_chosen_plan.csv",
+                       "text/csv", disabled=not ok)
+    c4.download_button("All options (CSV)", res["options"].to_csv(index=False), "suntower_options.csv",
+                       "text/csv", disabled=not ok)
+    st.markdown("#### Assumptions used")
+    st.dataframe(assumptions_frame(), hide_index=True, width="stretch")
+
+
+# -------------------------------------------------------------------
+# Legacy screening map (original v2 data, relabelled)
 # -------------------------------------------------------------------
 @st.cache_data
-def load_data():
-    """Load enriched tower data."""
-    data_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'towers_enriched.csv')
-    if not os.path.exists(data_path):
-        st.error(f"Data file not found: {data_path}")
-        st.info("Run the data pipeline first: `python scripts/data_pipeline.py`")
-        st.stop()
-    df = pd.read_csv(data_path)
-    return df
+def load_legacy():
+    path = os.path.join(os.path.dirname(__file__), '..', 'data', 'towers_enriched.csv')
+    if not os.path.exists(path):
+        return None
+    return pd.read_csv(path)
 
 
-def get_color(score, max_score=10):
-    """Get color for tower marker based on score."""
+def get_color(score):
     if score >= 7.5:
-        return '#22c55e'  # Green - high priority
-    elif score >= 5.0:
-        return '#fbbf24'  # Amber - medium priority
-    elif score >= 2.5:
-        return '#f97316'  # Orange - lower priority
-    else:
-        return '#6b7280'  # Gray - low priority
+        return '#1b7f3b'
+    if score >= 5.0:
+        return '#b8860b'
+    if score >= 2.5:
+        return '#c0582b'
+    return '#6b7280'
 
 
-def get_priority_label(score):
-    if score >= 7.5:
-        return "HIGH", "green"
-    elif score >= 5.0:
-        return "MEDIUM", "amber"
-    elif score >= 2.5:
-        return "LOW", "red"
-    else:
-        return "MINIMAL", "red"
-
-
-# -------------------------------------------------------------------
-# Sidebar
-# -------------------------------------------------------------------
-def render_sidebar(df):
-    with st.sidebar:
-        st.markdown("## ☀️ SUNTOWER-AI")
-        st.markdown('<p style="color: #94a3b8; font-size: 0.8rem;">GeoAI Capital Allocation Engine<br>for Sustainable Telecom Infrastructure</p>', unsafe_allow_html=True)
-
-        st.markdown("---")
-
-        # Budget control
-        st.markdown("### 💰 Investment Budget")
-        budget_usd = st.slider(
-            "Budget (USD)",
-            min_value=100_000,
-            max_value=10_000_000,
-            value=2_000_000,
-            step=100_000,
-            format="$%d",
-            help="Set the total solarisation investment budget"
-        )
-
-        st.markdown("---")
-
-        # Priority mode
-        st.markdown("### 🎯 Priority Mode")
-        scenario = st.radio(
-            "Optimization Objective",
-            options=['balanced', 'economic', 'carbon', 'equity'],
-            format_func=lambda x: {
-                'balanced': '⚖️ Balanced ESG',
-                'economic': '💵 Economic (ROI)',
-                'carbon': '🌿 Carbon Reduction',
-                'equity': '🏘️ Connectivity Equity'
-            }[x],
-            index=0,
-            help="Change the priority weights for tower ranking"
-        )
-
-        st.markdown("---")
-
-        # Custom weights (advanced)
-        with st.expander("⚙️ Custom Weights", expanded=False):
-            w1 = st.slider("☀️ Solar Potential", 0, 100,
-                          int(SCENARIO_WEIGHTS[scenario]['solar_potential'] * 100))
-            w2 = st.slider("💰 Energy Savings", 0, 100,
-                          int(SCENARIO_WEIGHTS[scenario]['energy_savings'] * 100))
-            w3 = st.slider("🌿 Carbon Avoided", 0, 100,
-                          int(SCENARIO_WEIGHTS[scenario]['carbon_avoided'] * 100))
-            w4 = st.slider("🏘️ Connectivity Equity", 0, 100,
-                          int(SCENARIO_WEIGHTS[scenario]['connectivity_equity'] * 100))
-            w5 = st.slider("🛣️ Access Feasibility", 0, 100,
-                          int(SCENARIO_WEIGHTS[scenario]['access_feasibility'] * 100))
-
-            total = w1 + w2 + w3 + w4 + w5
-            if total > 0:
-                custom_weights = {
-                    'solar_potential': w1 / total,
-                    'energy_savings': w2 / total,
-                    'carbon_avoided': w3 / total,
-                    'connectivity_equity': w4 / total,
-                    'access_feasibility': w5 / total,
-                }
-            else:
-                custom_weights = SCENARIO_WEIGHTS[scenario]
-
-            use_custom = st.checkbox("Use custom weights")
-
-        weights = custom_weights if use_custom else SCENARIO_WEIGHTS[scenario]
-
-        st.markdown("---")
-
-        # Filter options
-        st.markdown("### 🔍 Filters")
-        show_only_offgrid = st.checkbox("Show only weak-grid / off-grid", value=False)
-        show_selected_only = st.checkbox("Show only budget-selected towers", value=False)
-
-        st.markdown("---")
-        st.markdown(
-            '<p style="color: #475569; font-size: 0.65rem; text-align: center;">'
-            'ASEAN GeoAI Fusion 2026<br>HACK-ID-068 | Team Suntower</p>',
-            unsafe_allow_html=True
-        )
-
-        return budget_usd, weights, scenario, show_only_offgrid, show_selected_only
-
-
-# -------------------------------------------------------------------
-# Main Content
-# -------------------------------------------------------------------
-def render_header():
-    st.markdown("""
-    <div class="hero-header">
-        <div class="hero-title">☀️ SUNTOWER<span>-AI</span></div>
-        <p class="hero-sub">
-            GeoAI Capital Allocation Engine for Sustainable Telecom Infrastructure.
-            Fusing satellite-derived solar irradiance, population density, terrain, and economic data
-            to optimise solarisation investment across ASEAN telecom towers.
-        </p>
-        <div class="hero-tagline">Not where the sun shines — where your investment shines brightest.</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-
-def render_metrics(impact, total_offgrid, total_towers):
-    cols = st.columns(6)
-
-    with cols[0]:
-        st.markdown(f"""
-        <div class="metric-card metric-highlight">
-            <div class="metric-value">{impact['towers_selected']}</div>
-            <div class="metric-label">Towers Selected</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with cols[1]:
-        savings = impact['annual_savings_usd']
-        if savings >= 1_000_000:
-            savings_str = f"${savings/1_000_000:.1f}M"
-        else:
-            savings_str = f"${savings/1_000:.0f}K"
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-value">{savings_str}</div>
-            <div class="metric-label">Annual Savings</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with cols[2]:
-        co2 = impact['annual_co2_avoided_tonnes']
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-value">{co2:,.0f}</div>
-            <div class="metric-label">Tonnes CO₂/yr Avoided</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with cols[3]:
-        pop = impact['population_served']
-        if pop >= 1_000_000:
-            pop_str = f"{pop/1_000_000:.1f}M"
-        elif pop >= 1_000:
-            pop_str = f"{pop/1_000:.0f}K"
-        else:
-            pop_str = str(pop)
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-value">{pop_str}</div>
-            <div class="metric-label">Population Served</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with cols[4]:
-        payback = impact['payback_years']
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-value">{payback:.1f}yr</div>
-            <div class="metric-label">Avg Payback Period</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with cols[5]:
-        capex = impact['total_capex_usd']
-        if capex >= 1_000_000:
-            capex_str = f"${capex/1_000_000:.1f}M"
-        else:
-            capex_str = f"${capex/1_000:.0f}K"
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-value">{capex_str}</div>
-            <div class="metric-label">Total CAPEX Deployed</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-
-def create_map(df_display, selected_ids, center_lat, center_lon):
-    """Create the Folium map with scored towers."""
-    m = folium.Map(
-        location=[center_lat, center_lon],
-        zoom_start=9,
-        tiles=None,
-        control_scale=True,
-    )
-
-    # Dark tile layer
-    folium.TileLayer(
-        tiles='https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-        attr='&copy; <a href="https://carto.com/">CARTO</a>',
-        name='Dark Base',
-        control=False,
-    ).add_to(m)
-
-    # Add towers
-    for _, row in df_display.iterrows():
-        score = row.get('suntower_score_10', 0)
-        is_selected = row['id'] in selected_ids if len(selected_ids) > 0 else False
-        is_offgrid = row.get('is_off_grid', 0) == 1
-
-        color = get_color(score)
-        radius = 6 if is_selected else 4
-        opacity = 0.9 if is_selected else 0.5
-        weight = 2 if is_selected else 0.5
-
-        if not is_offgrid:
-            color = '#374151'
-            opacity = 0.25
-            radius = 3
-
-        priority_label, badge_class = get_priority_label(score)
-
-        popup_html = f"""
-        <div style="font-family: Inter, sans-serif; min-width: 260px; padding: 4px;">
-            <h4 style="margin: 0 0 6px; font-size: 13px; color: #1e293b;">
-                Tower #{int(row['id'])}
-                <span style="float: right; font-size: 11px; background: {color};
-                      color: white; padding: 2px 8px; border-radius: 10px;">{priority_label}</span>
-            </h4>
-            <p style="margin: 0 0 6px; font-size: 11px; color: #64748b;">
-                {row.get('bps_nama_kabupaten_kota', 'N/A')} · {row.get('bps_nama_kecamatan', 'N/A')}
-            </p>
-            <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 6px 0;">
-            <table style="width: 100%; font-size: 11px; color: #334155;">
-                <tr><td>☀️ <b>SUNTOWER Score</b></td><td style="text-align:right"><b>{score:.1f}/10</b></td></tr>
-                <tr><td>🔆 GHI</td><td style="text-align:right">{row['ghi_kwh_m2_day']:.2f} kWh/m²/day</td></tr>
-                <tr><td>👥 Population (5km)</td><td style="text-align:right">{row['population_5km']:,}</td></tr>
-                <tr><td>💰 Energy Savings</td><td style="text-align:right">${row['total_savings_usd_year']:,.0f}/yr</td></tr>
-                <tr><td>🌿 CO₂ Avoided</td><td style="text-align:right">{row['co2_avoided_tonnes_year']:.1f} t/yr</td></tr>
-                <tr><td>🛣️ Road Distance</td><td style="text-align:right">{row['road_distance_km']:.1f} km</td></tr>
-                <tr><td>🔌 Grid Status</td><td style="text-align:right">{row.get('grid_status_label', 'Off-Grid' if is_offgrid else 'Grid')}</td></tr>
-                <tr><td>📡 Owner</td><td style="text-align:right">{row.get('pemilik_menara', 'N/A')[:20]}</td></tr>
-                <tr><td>🏗️ Height</td><td style="text-align:right">{row.get('tower_height', 'N/A')}m</td></tr>
-            </table>
-        </div>
-        """
-
-        folium.CircleMarker(
-            location=[row['lat'], row['long']],
-            radius=radius,
-            color=color,
-            fill=True,
-            fillColor=color,
-            fillOpacity=opacity,
-            weight=weight,
-            popup=folium.Popup(popup_html, max_width=320),
-        ).add_to(m)
-
-    # Legend
-    legend_html = """
-    <div style="position: fixed; bottom: 30px; left: 50px; z-index: 9999;
-         background: rgba(15, 23, 42, 0.92); padding: 14px 18px;
-         border-radius: 12px; border: 1px solid rgba(148, 163, 184, 0.2);
-         font-family: Inter, sans-serif; backdrop-filter: blur(8px);">
-        <div style="font-size: 11px; font-weight: 800; color: #f8fafc; margin-bottom: 8px;
-                    letter-spacing: 0.06em; text-transform: uppercase;">
-            SUNTOWER Priority
-        </div>
-        <div style="font-size: 11px; color: #94a3b8; line-height: 1.8;">
-            <span style="color: #22c55e;">●</span> High (7.5+) &nbsp;
-            <span style="color: #fbbf24;">●</span> Medium (5.0-7.5) &nbsp;
-            <span style="color: #f97316;">●</span> Low (2.5-5.0) &nbsp;
-            <span style="color: #6b7280;">●</span> Minimal / Grid
-        </div>
-    </div>
-    """
-    m.get_root().html.add_child(folium.Element(legend_html))
-
-    return m
-
-
-def render_scenario_comparison(df, budget_usd):
-    """Render scenario comparison charts."""
-    st.markdown("### 📊 Scenario Comparison")
-    st.caption("Same budget, different priorities — see how allocation changes")
-
-    comparisons = scenario_compare(df, budget_usd)
-
-    # Build comparison dataframe
-    comp_rows = []
-    for name, impact in comparisons.items():
-        comp_rows.append({
-            'Scenario': name.title(),
-            'Towers': impact['towers_selected'],
-            'Savings ($/yr)': impact['annual_savings_usd'],
-            'CO₂ Avoided (t/yr)': impact['annual_co2_avoided_tonnes'],
-            'Population': impact['population_served'],
-            'Payback (yr)': impact['payback_years'],
-        })
-    comp_df = pd.DataFrame(comp_rows)
-
-    cols = st.columns(2)
-
-    with cols[0]:
-        fig = go.Figure()
-        fig.add_trace(go.Bar(
-            x=comp_df['Scenario'],
-            y=comp_df['CO₂ Avoided (t/yr)'],
-            name='CO₂ Avoided',
-            marker_color=['#3b82f6', '#22c55e', '#22c55e', '#3b82f6'],
-            text=comp_df['CO₂ Avoided (t/yr)'].apply(lambda x: f'{x:,.0f}t'),
-            textposition='outside',
-        ))
-        fig.update_layout(
-            title=dict(text='CO₂ Avoided per Scenario', font=dict(size=14)),
-            yaxis_title='Tonnes CO₂/year',
-            template='plotly_dark',
-            paper_bgcolor='rgba(0,0,0,0)',
-            plot_bgcolor='rgba(0,0,0,0)',
-            height=300,
-            margin=dict(t=40, b=20, l=40, r=20),
-        )
-        st.plotly_chart(fig, width="stretch")
-
-    with cols[1]:
-        fig2 = go.Figure()
-        fig2.add_trace(go.Bar(
-            x=comp_df['Scenario'],
-            y=comp_df['Population'],
-            name='Population Served',
-            marker_color=['#3b82f6', '#3b82f6', '#3b82f6', '#fbbf24'],
-            text=comp_df['Population'].apply(lambda x: f'{x/1000:.0f}K'),
-            textposition='outside',
-        ))
-        fig2.update_layout(
-            title=dict(text='Population Served per Scenario', font=dict(size=14)),
-            yaxis_title='People',
-            template='plotly_dark',
-            paper_bgcolor='rgba(0,0,0,0)',
-            plot_bgcolor='rgba(0,0,0,0)',
-            height=300,
-            margin=dict(t=40, b=20, l=40, r=20),
-        )
-        st.plotly_chart(fig2, width="stretch")
-
-
-def render_cumulative_impact(selected_df):
-    """Render cumulative impact curve."""
-    if len(selected_df) == 0:
+def render_legacy():
+    st.markdown(
+        "Original SUNTOWER v2 screening of 3,532 rows from the Bandung tower list. **Every attribute below "
+        "is produced by formulas in `scripts/data_pipeline.py`** (GHI, elevation, population, night lights, "
+        "grid status, road distance, energy, cost) — none is a satellite observation or site measurement. "
+        "See `docs/SENO_BASELINE_AUDIT.md`.")
+    st.markdown("- The source lists the same inventory for 2017–2020, so many towers appear up to four times.\n"
+                "- 3,531 of 3,532 rows are classified 'Strong Grid' by the night-light proxy.\n"
+                "- 5-km population proxies overlap, so their sum is **not** people served.")
+    df = load_legacy()
+    if df is None:
+        st.info("Run `python scripts/data_pipeline.py` to create data/towers_enriched.csv.")
         return
-
-    sorted_sel = selected_df.sort_values('suntower_score_10', ascending=False)
-    sorted_sel['cum_capex'] = sorted_sel['capex_usd'].cumsum()
-    sorted_sel['cum_co2'] = sorted_sel['co2_avoided_tonnes_year'].cumsum()
-    sorted_sel['cum_savings'] = sorted_sel['total_savings_usd_year'].cumsum()
-    sorted_sel['tower_num'] = range(1, len(sorted_sel) + 1)
-
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=sorted_sel['cum_capex'],
-        y=sorted_sel['cum_co2'],
-        mode='lines+markers',
-        name='CO₂ Avoided',
-        line=dict(color='#22c55e', width=2),
-        marker=dict(size=4),
-        hovertemplate='CAPEX: $%{x:,.0f}<br>CO₂ Avoided: %{y:.0f} t/yr<extra></extra>'
-    ))
-    fig.update_layout(
-        title=dict(text='Cumulative Impact vs Investment', font=dict(size=14)),
-        xaxis_title='Cumulative CAPEX (USD)',
-        yaxis_title='Cumulative CO₂ Avoided (tonnes/yr)',
-        template='plotly_dark',
-        paper_bgcolor='rgba(0,0,0,0)',
-        plot_bgcolor='rgba(0,0,0,0)',
-        height=300,
-        margin=dict(t=40, b=40, l=50, r=20),
-    )
-    st.plotly_chart(fig, width="stretch")
-
-
-def render_tower_table(selected_df):
-    """Render top towers table."""
-    if len(selected_df) == 0:
-        st.info("No towers selected within current budget. Increase budget or adjust filters.")
-        return
-
-    display_cols = {
-        'rank': 'Rank',
-        'id': 'Tower ID',
-        'bps_nama_kabupaten_kota': 'District',
-        'suntower_score_10': 'Score',
-        'ghi_kwh_m2_day': 'GHI',
-        'population_5km': 'Population (5km)',
-        'total_savings_usd_year': 'Savings ($/yr)',
-        'co2_avoided_tonnes_year': 'CO₂ Avoided (t/yr)',
-        'road_distance_km': 'Road Dist (km)',
-        'pemilik_menara': 'Owner',
-    }
-
-    top = selected_df.sort_values('suntower_score_10', ascending=False).head(20)
-    display = top[[c for c in display_cols.keys() if c in top.columns]].copy()
-    display = display.rename(columns=display_cols)
-
-    st.dataframe(
-        display,
-        width="stretch",
-        hide_index=True,
-        column_config={
-            'Score': st.column_config.ProgressColumn(
-                format="%.1f",
-                min_value=0,
-                max_value=10,
-            ),
-            'GHI': st.column_config.NumberColumn(format="%.2f"),
-            'Population (5km)': st.column_config.NumberColumn(format="%d"),
-            'Savings ($/yr)': st.column_config.NumberColumn(format="$%.0f"),
-            'CO₂ Avoided (t/yr)': st.column_config.NumberColumn(format="%.1f"),
-            'Road Dist (km)': st.column_config.NumberColumn(format="%.1f"),
-        }
-    )
+    c1, c2 = st.columns(2)
+    budget = c1.slider("Legacy budget (USD)", 100_000, 10_000_000, 2_000_000, 100_000, key="lg_budget")
+    scenario = c2.selectbox("Legacy weights", list(SCENARIO_WEIGHTS), key="lg_scen")
+    scored = compute_scores(df, SCENARIO_WEIGHTS[scenario])
+    selected = budget_allocation(scored, budget, candidates_only=False)
+    imp = compute_impact(selected)
+    cols = st.columns(4)
+    stat(cols[0], imp['towers_selected'], "rows selected (score + prefix greedy)")
+    stat(cols[1], f"${imp['annual_savings_usd']:,.0f}", "modeled savings/yr (proxy inputs)")
+    stat(cols[2], f"{imp['annual_co2_avoided_tonnes']:,.0f} t", "modeled CO2/yr (proxy inputs)")
+    stat(cols[3], f"{imp['population_served']:,.0f}", "sum of overlapping 5-km proxies — NOT people served")
+    if st.checkbox("Draw map (3,532 markers, slow)", key="lg_map"):
+        sel_ids = set(selected['id'])
+        m = folium.Map(location=[scored['lat'].mean(), scored['long'].mean()], zoom_start=11,
+                       tiles="cartodbpositron", control_scale=True)
+        for _, r in scored.iterrows():
+            chosen = r['id'] in sel_ids
+            folium.CircleMarker(
+                [r['lat'], r['long']], radius=5 if chosen else 2.5, color=get_color(r['suntower_score_10']),
+                fill=True, fill_opacity=0.85 if chosen else 0.3, weight=1,
+                tooltip=(f"Row {int(r['id'])} · score {r['suntower_score_10']:.1f} (proxy) · "
+                         f"{'selected' if chosen else 'not selected'}")).add_to(m)
+        st_folium(m, height=480, use_container_width=True, returned_objects=[])
+        st.caption("Marker size = selected by legacy greedy; colour = legacy score band. Decision-support only.")
+    if len(selected):
+        st.download_button("Legacy priority list (CSV)", selected.to_csv(index=False),
+                           "suntower_priority_list.csv", "text/csv")
 
 
 # -------------------------------------------------------------------
-# Main App
+# Main
 # -------------------------------------------------------------------
 def main():
-    # Load data
-    df = load_data()
+    records, label, budget, objective, max_h, scope, capex_basis, overrides = render_sidebar()
+    st.markdown("<p class='kicker'>SUNTOWER-AI · Telecom TowerCo energy planning</p>", unsafe_allow_html=True)
+    st.title("Retrofit portfolio decision")
+    st.info(DISCLAIMER)
 
-    # Render sidebar
-    budget_usd, weights, scenario, show_only_offgrid, show_selected_only = render_sidebar(df)
+    res = None
+    if records is not None:
+        if "FICTIONAL" in (label or ""):
+            st.warning("Data: **FICTIONAL sample portfolio.** Sites, coordinates and values are invented for "
+                       "demonstration and do not describe real towers.")
+        approver = st.session_state.get("approver") or None
+        res = cached_workflow(records, budget, objective, max_h, scope, capex_basis, overrides, label, approver)
+        if "error" not in res:
+            cur = res["currency"]
+            sel = res["optimal"].selection
+            up = sel[sel["option"] != "do_nothing"]
+            cols = st.columns(5)
+            stat(cols[0], f"{len(up)} / {len(sel)}", "sites retrofitted (valid sites)")
+            stat(cols[1], money(up['capex'].sum(), cur), f"CAPEX of {money(budget, cur)} budget")
+            stat(cols[2], money(sel['npv'].sum(), cur), f"modeled NPV ({money(sel['npv_low'].sum(), cur)} to "
+                                                        f"{money(sel['npv_high'].sum(), cur)})")
+            stat(cols[3], f"{sel['co2_avoided_t_yr'].sum():,.1f} t", "modeled CO2 avoided per year")
+            stat(cols[4], res["optimal"].status, "optimizer status")
 
-    # Compute scores
-    scored_df = compute_scores(df, weights)
-
-    # Budget allocation
-    selected = budget_allocation(scored_df, budget_usd, candidates_only=False)
-    impact = compute_impact(selected)
-    selected_ids = set(selected['id'].tolist()) if len(selected) > 0 else set()
-
-    # Header
-    render_header()
-
-    # Metrics row
-    total_offgrid = scored_df[scored_df['is_off_grid'] == 1].shape[0]
-    render_metrics(impact, total_offgrid, len(scored_df))
-
-    st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
-
-    # Main content area
-    map_col, detail_col = st.columns([3, 1])
-
-    with map_col:
-        st.markdown("### 🗺️ Tower Priority Map")
-
-        # Filter data for display
-        if show_selected_only:
-            df_display = scored_df[scored_df['id'].isin(selected_ids)]
-        elif show_only_offgrid:
-            df_display = scored_df[scored_df['is_off_grid'] == 1]
-        else:
-            df_display = scored_df
-
-        if len(df_display) > 0:
-            center_lat = df_display['lat'].mean()
-            center_lon = df_display['long'].mean()
-        else:
-            center_lat, center_lon = -6.9, 107.6
-
-        m = create_map(df_display, selected_ids, center_lat, center_lon)
-        st_folium(m, height=520, use_container_width=True, returned_objects=[])
-
-    with detail_col:
-        st.markdown("### 📋 Quick Stats")
-
-        st.markdown(f"""
-        <div class="tower-detail">
-            <p style="color: #94a3b8; font-size: 0.75rem; margin: 0 0 8px;">Analysis Summary</p>
-            <table style="width: 100%; font-size: 0.8rem; color: #cbd5e1;">
-                <tr><td>Total Towers</td><td style="text-align: right; font-weight: 700;">{len(scored_df):,}</td></tr>
-                <tr><td>Off-Grid Towers</td><td style="text-align: right; font-weight: 700;">{total_offgrid}</td></tr>
-                <tr><td>Budget Allocated</td><td style="text-align: right; font-weight: 700;">${budget_usd:,.0f}</td></tr>
-                <tr><td>Towers Selected</td><td style="text-align: right; font-weight: 700; color: #fbbf24;">{impact['towers_selected']}</td></tr>
-                <tr><td>Priority Mode</td><td style="text-align: right; font-weight: 700;">{scenario.title()}</td></tr>
-            </table>
-        </div>
-        """, unsafe_allow_html=True)
-
-        st.markdown("")
-
-        # Weight visualization
-        st.markdown(f"""
-        <div class="tower-detail" style="margin-top: 8px;">
-            <p style="color: #94a3b8; font-size: 0.75rem; margin: 0 0 8px;">Current Weights</p>
-            <table style="width: 100%; font-size: 0.75rem; color: #cbd5e1;">
-                <tr><td>☀️ Solar</td><td style="text-align: right;">{weights['solar_potential']*100:.0f}%</td></tr>
-                <tr><td>💰 Savings</td><td style="text-align: right;">{weights['energy_savings']*100:.0f}%</td></tr>
-                <tr><td>🌿 Carbon</td><td style="text-align: right;">{weights['carbon_avoided']*100:.0f}%</td></tr>
-                <tr><td>🏘️ Equity</td><td style="text-align: right;">{weights['connectivity_equity']*100:.0f}%</td></tr>
-                <tr><td>🛣️ Access</td><td style="text-align: right;">{weights['access_feasibility']*100:.0f}%</td></tr>
-            </table>
-        </div>
-        """, unsafe_allow_html=True)
-
-        st.markdown("")
-
-        # Methodology
-        with st.expander("ℹ️ Methodology"):
-            st.markdown("""
-            **SUNTOWER-AI** fuses 8 open geospatial datasets:
-            - 🔆 Solar irradiance (Global Solar Atlas model)
-            - 👥 Population density (WorldPop proxy)
-            - 🏔️ Terrain (SRTM elevation model)
-            - 🌙 Nighttime lights (VIIRS off-grid proxy)
-            - 🛣️ Road network (OSM distance)
-            - 🌍 Land cover (ESA WorldCover)
-            - ⛽ Diesel prices (public databases)
-            - 📡 Tower data (AGAIF + OpenCelliD)
-
-            **Scoring**: Multi-criteria weighted analysis
-            with user-configurable ESG priorities.
-
-            **Budget Allocation**: Greedy ranking
-            with capital constraint optimization.
-            """)
-
-    st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
-
-    # Bottom section: Charts + Table
-    tab1, tab2, tab3 = st.tabs(["📊 Scenario Comparison", "📈 Impact Curve", "📋 Priority Table"])
-
-    with tab1:
-        render_scenario_comparison(df, budget_usd)
-
-    with tab2:
-        render_cumulative_impact(selected)
-
-    with tab3:
-        st.markdown("### Top Priority Towers")
-        render_tower_table(selected)
-
-        # Download button
-        if len(selected) > 0:
-            csv_data = selected.to_csv(index=False)
-            st.download_button(
-                label="📥 Download Priority List (CSV)",
-                data=csv_data,
-                file_name="suntower_priority_list.csv",
-                mime="text/csv",
-            )
+    tabs = st.tabs(["2 · Evidence", "3 · Compare plans", "4 · Sites & exclusions", "5 · Approve & export",
+                    "Legacy screening map"])
+    with tabs[4]:
+        render_legacy()
+    if res is None:
+        for t in tabs[:4]:
+            t.info("Upload a portfolio CSV in the sidebar (see data/sample_portfolio_fictional.csv for the format).")
+        return
+    if "error" in res:
+        for t in tabs[:4]:
+            t.error(res["error"])
+        tabs[0].dataframe(res["issues"], hide_index=True)
+        return
+    with tabs[0]:
+        render_evidence(res)
+    with tabs[1]:
+        render_compare(res, budget, objective)
+    with tabs[2]:
+        render_sites(res, objective)
+    with tabs[3]:
+        st.text_input("Approver name (printed on memo)", key="approver")
+        render_export(res)
 
 
 if __name__ == "__main__":

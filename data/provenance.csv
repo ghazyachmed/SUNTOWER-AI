@@ -1,0 +1,36 @@
+dataset,field,unit,derivation,evidence_type,source,as_of_date,notes
+data/towers_enriched.csv,id,-,source row id,third_party_observed,Bandung municipal tower inventory CSV as provided in AGAIF bootcamp materials; publisher licence unverified,2017-2020 (tahun column),
+data/towers_enriched.csv,nama_provinsi,-,,third_party_observed,Bandung municipal tower inventory CSV as provided in AGAIF bootcamp materials; publisher licence unverified,2017-2020 (tahun column),
+data/towers_enriched.csv,bps_nama_kabupaten_kota,-,,third_party_observed,Bandung municipal tower inventory CSV as provided in AGAIF bootcamp materials; publisher licence unverified,2017-2020 (tahun column),
+data/towers_enriched.csv,bps_nama_kecamatan,-,,third_party_observed,Bandung municipal tower inventory CSV as provided in AGAIF bootcamp materials; publisher licence unverified,2017-2020 (tahun column),
+data/towers_enriched.csv,pemilik_menara,-,tower owner name,third_party_observed,Bandung municipal tower inventory CSV as provided in AGAIF bootcamp materials; publisher licence unverified,2017-2020 (tahun column),Company names; rights unverified
+data/towers_enriched.csv,lokasi_menara,-,street address,third_party_observed,Bandung municipal tower inventory CSV as provided in AGAIF bootcamp materials; publisher licence unverified,2017-2020 (tahun column),Street-level address; do not republish beyond licence
+data/towers_enriched.csv,long,deg,,third_party_observed,Bandung municipal tower inventory CSV as provided in AGAIF bootcamp materials; publisher licence unverified,2017-2020 (tahun column),305 rows auto-swapped lon/lat by pipeline; 15 rows dropped; Coblong row at lat -5.895 likely typo kept
+data/towers_enriched.csv,lat,deg,,third_party_observed,Bandung municipal tower inventory CSV as provided in AGAIF bootcamp materials; publisher licence unverified,2017-2020 (tahun column),see long
+data/towers_enriched.csv,struktur_tower,-,,third_party_observed,Bandung municipal tower inventory CSV as provided in AGAIF bootcamp materials; publisher licence unverified,2017-2020 (tahun column),
+data/towers_enriched.csv,tower_height,m,tinggi_tower; missing->30 m,third_party_observed,Bandung municipal tower inventory CSV as provided in AGAIF bootcamp materials; publisher licence unverified,2017-2020 (tahun column),Fill value 30 m is an assumption
+data/towers_enriched.csv,elevation_m,m,"estimate_elevation(lat,lon) — sinusoid around Bandung",modeled_proxy,"scripts/data_pipeline.py: estimate_elevation(lat,lon) — sinusoid around Bandung",n/a (formula),Not SRTM
+data/towers_enriched.csv,ghi_kwh_m2_day,kWh/m2/day,"estimate_ghi(lat,lon,elev) — base 5.0 + trig terms, clipped 3.8-5.8",modeled_proxy,"scripts/data_pipeline.py: estimate_ghi(lat,lon,elev) — base 5.0 + trig terms, clipped 3.8-5.8",n/a (formula),Not Global Solar Atlas/ERA5
+data/towers_enriched.csv,population_5km,people,estimate_population_5km — distance decay from 9 hard-coded city totals,modeled_proxy,scripts/data_pipeline.py: estimate_population_5km — distance decay from 9 hard-coded city totals,n/a (formula),"Not WorldPop; overlapping buffers, never sum"
+data/towers_enriched.csv,nightlight_intensity,nW/cm2/sr (nominal),estimate_nightlight(population) — log of population proxy,modeled_proxy,scripts/data_pipeline.py: estimate_nightlight(population) — log of population proxy,n/a (formula),Not VIIRS
+data/towers_enriched.csv,grid_status,class 0-3,"classify_grid_status(nightlight, population)",modeled_proxy,"scripts/data_pipeline.py: classify_grid_status(nightlight, population)",n/a (formula),3531/3532 rows = Strong Grid; not utility data
+data/towers_enriched.csv,grid_status_label,-,label of grid_status,modeled_proxy,scripts/data_pipeline.py: label of grid_status,n/a (formula),
+data/towers_enriched.csv,is_off_grid,0/1,grid_status>=2,modeled_proxy,scripts/data_pipeline.py: grid_status>=2,n/a (formula),
+data/towers_enriched.csv,road_distance_km,km,estimate_road_distance(population) — step function + sine,modeled_proxy,scripts/data_pipeline.py: estimate_road_distance(population) — step function + sine,n/a (formula),Not OSM
+data/towers_enriched.csv,daily_kwh,kWh/day,15/40/80 by tower height band,modeled_proxy,scripts/data_pipeline.py: 15/40/80 by tower height band,n/a (formula),Assumption-driven
+data/towers_enriched.csv,diesel_litres_day,L/day,daily_kwh*diesel_fraction(grid_status)/3.0,modeled_proxy,scripts/data_pipeline.py: daily_kwh*diesel_fraction(grid_status)/3.0,n/a (formula),
+data/towers_enriched.csv,diesel_litres_year,L/yr,diesel_litres_day*365,modeled_proxy,scripts/data_pipeline.py: diesel_litres_day*365,n/a (formula),
+data/towers_enriched.csv,diesel_cost_usd_year,USD/yr,diesel_litres_year*0.82,modeled_proxy,scripts/data_pipeline.py: diesel_litres_year*0.82,n/a (formula),Price constant uncited
+data/towers_enriched.csv,grid_cost_usd_year,USD/yr,grid_kwh_day*365*0.08,modeled_proxy,scripts/data_pipeline.py: grid_kwh_day*365*0.08,n/a (formula),Tariff constant uncited
+data/towers_enriched.csv,total_energy_cost_usd_year,USD/yr,sum of above,modeled_proxy,scripts/data_pipeline.py: sum of above,n/a (formula),
+data/towers_enriched.csv,co2_diesel_tonnes_year,t/yr,diesel_litres_year*2.68/1000,modeled_proxy,scripts/data_pipeline.py: diesel_litres_year*2.68/1000,n/a (formula),
+data/towers_enriched.csv,co2_grid_tonnes_year,t/yr,grid kWh*0.76/1000,modeled_proxy,scripts/data_pipeline.py: grid kWh*0.76/1000,n/a (formula),Grid EF uncited
+data/towers_enriched.csv,co2_total_tonnes_year,t/yr,sum,modeled_proxy,scripts/data_pipeline.py: sum,n/a (formula),
+data/towers_enriched.csv,diesel_savings_usd_year,USD/yr,diesel_cost*0.70,modeled_proxy,scripts/data_pipeline.py: diesel_cost*0.70,n/a (formula),SOLAR_OFFSET=0.70 assumption
+data/towers_enriched.csv,grid_savings_usd_year,USD/yr,grid_cost*0.70*0.5,modeled_proxy,scripts/data_pipeline.py: grid_cost*0.70*0.5,n/a (formula),
+data/towers_enriched.csv,total_savings_usd_year,USD/yr,sum,modeled_proxy,scripts/data_pipeline.py: sum,n/a (formula),"Modeled, not realised savings"
+data/towers_enriched.csv,co2_avoided_tonnes_year,t/yr,diesel CO2*0.7 + grid CO2*0.35,modeled_proxy,scripts/data_pipeline.py: diesel CO2*0.7 + grid CO2*0.35,n/a (formula),
+data/towers_enriched.csv,capex_usd,USD,45000 if grid_status>=2 else 25000,modeled_proxy,scripts/data_pipeline.py: 45000 if grid_status>=2 else 25000,n/a (formula),Flat placeholder
+data/towers_enriched.csv,connectivity_gap,0-1,1 - minmax(nightlight),modeled_proxy,scripts/data_pipeline.py: 1 - minmax(nightlight),n/a (formula),
+data/towers_enriched.csv,connectivity_equity,0-1,population/max * connectivity_gap,modeled_proxy,scripts/data_pipeline.py: population/max * connectivity_gap,n/a (formula),
+data/sample_portfolio_fictional.csv,*,per row,see file,per row (synthetic/modeled_proxy/assumption/missing),scripts/make_fictional_sample.py,2026-11-01,Field-level provenance is carried inside the long-format file itself

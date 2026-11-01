@@ -1,7 +1,13 @@
 """
 SUNTOWER-AI Data Pipeline v2
 Processes tower locations and generates geospatial features for scoring.
-Uses satellite-derived proxies and open data models.
+
+EVIDENCE NOTE (SENO audit, 2026-11-01): every derived column below (elevation,
+GHI, population, night lights, grid status, road distance, energy, diesel,
+cost, emissions) is produced by the closed-form formulas in this file. They
+are evidence_type=modeled_proxy, NOT satellite observations or site
+measurements; no Earth Engine data is read here. See data/provenance.csv and
+docs/SENO_BASELINE_AUDIT.md.
 
 All towers are candidates for solar energy transition — not just off-grid.
 Grid-connected towers benefit from reduced electricity costs and carbon footprint.
