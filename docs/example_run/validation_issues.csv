@@ -1,0 +1,2 @@
+severity,site_id,field,message
+error,FICT-11,ghi_kwh_m2_day,12.5 above maximum 8.0
