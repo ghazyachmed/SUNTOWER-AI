@@ -2,7 +2,7 @@
 
 Reference framework: Indonesia's Tingkat Kesiapterapan Teknologi (TKT), Permenristekdikti No. 42/2016. **This is a team self-assessment against the TKT level descriptions. It is not an official TKT designation.** An official level requires the formal measurement process (for example the Kemdikbudristek/BRIN TKT measurement instrument) and an assessor. The indicator wording below is paraphrased.
 
-Assessment date: 2026-11-01, branch `feat/seno-portfolio-decision`.
+Assessment date: 2026-11-01, branch `main`.
 
 ## Evidence by level
 

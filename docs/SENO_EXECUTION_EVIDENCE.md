@@ -1,6 +1,6 @@
 # SENO execution evidence
 
-All outputs below were produced by real command runs on 2026-11-01. The run started at 05:26:43 UTC on code commit `5e1a3c2d5ec2beb0195c1133a90e19279792cfce` (branch `feat/seno-portfolio-decision`, parent `46a2f0c`). Platform: macOS Darwin 25.6.0 arm64, Python 3.12.13, scipy 1.18.1, pandas 3.1.0, numpy 2.5.4, streamlit 1.66.1, scikit-learn 1.9.1, pytest 9.2.0.
+All outputs below were produced by real command runs on 2026-11-01. The run started at 05:26:43 UTC on code commit `5e1a3c2d5ec2beb0195c1133a90e19279792cfce` (now on `main`, parent `46a2f0c`). Platform: macOS Darwin 25.6.0 arm64, Python 3.12.13, scipy 1.18.1, pandas 3.1.0, numpy 2.5.4, streamlit 1.66.1, scikit-learn 1.9.1, pytest 9.2.0.
 
 **Every portfolio input is fictional (`SYNTHETIC`), a formula proxy (`PROXY`) or a planning assumption (`ASSUMPTION`). Every money and CO2 figure is a modeled estimate. Nothing below is a field result.**
 
